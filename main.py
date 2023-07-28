@@ -89,7 +89,8 @@ class Facilities(db.Model):
 
 class FacilitiesSchema(ma.Schema):
     class Meta:
-        fields = ('id', 'facility_name', 'location', 'seating_capacity', 'availability', 'access_rights', 'faculty_in_charge')
+        fields = (
+            'id', 'facility_name', 'location', 'seating_capacity', 'availability', 'access_rights', 'faculty_in_charge')
 
 
 facilities_schema = FacilitiesSchema()
@@ -106,14 +107,14 @@ class AppointmentRequests(db.Model):
     app_response = db.Column(db.String(2000), nullable=False)
     approved = db.Column(db.Integer, nullable=False)
 
-    def __init__(self, id, title, date, message, faculty, student, response, approved):
+    def __init__(self, id, title, date, message, faculty, student, app_response, approved):
         self.app_id = id
         self.app_title = title
         self.app_date = date
         self.app_message = message
         self.faculty_id = faculty
         self.student_id = student
-        self.app_response = response
+        self.app_response = app_response
         self.approved = approved
 
 
@@ -189,11 +190,29 @@ class FacilityRequestSchema(ma.Schema):
     class Meta:
         fields = ('facility_request_id', 'facility_id', 'facility_request_title', 'facility_date_start',
                   'facility_date_end', 'facility_activity',
-                  'facility_additional_eq', 'student', 'approved')
+                  'facility_additional_eq', 'student_id', 'approved')
 
 
 facility_request_schema = FacilityRequestSchema()
 facility_requests_schema = FacilityRequestSchema(many=True)
+
+
+@app.route('/post_search_specific', methods=['POST'])
+def search_specific():
+    database_select = request.json['table']
+
+    if database_select == 'faculty':
+        search_result = db.session.execute(db.select(ProfessorID)).scalars()
+        print(search_result)
+        return professorid_requests_schema.jsonify(search_result)
+    elif database_select == 'facilities':
+        search_result = db.session.execute(db.select(Facilities)).scalars()
+        print(search_result)
+        return facility_requests_schema.jsonify(search_result)
+    else:
+        search_result = db.session.execute(db.select(Facilities)).scalars()
+        print(search_result)
+        return access_requests_schema.jsonify(search_result)
 
 
 @app.route('/post_rfid_prof', methods=['POST'])
@@ -223,7 +242,6 @@ def fetch_prof_details():
 def fetch_facility_details():
     facility_name = request.json['facility_name']
     result = db.session.execute(db.select(Facilities).where(Facilities.facility_name == facility_name)).scalar_one()
-    print(result)
     return facilities_schema.jsonify(result)
 
 
@@ -249,6 +267,81 @@ def add_appointment():
     db.session.commit()
 
     return appointment_request_schema.jsonify(new_appointment)
+
+
+@app.route('/post_appointment_approval', methods=['POST'])
+def appointment_approval():
+    app_id = request.json['app_id']
+
+    appointment_id = db.session.execute(
+        db.select(AppointmentRequests).where(AppointmentRequests.app_id == app_id)).scalar_one()
+    return appointment_request_schema.jsonify(appointment_id)
+
+
+@app.route('/post_access_approval', methods=['POST'])
+def access_approval():
+    access_id = request.json['access_id']
+
+    access_request_id = db.session.execute(
+        db.select(AccessRequest).where(AccessRequest.access_id == access_id)).scalar_one()
+    return access_request_schema.jsonify(access_request_id)
+
+
+@app.route('/post_facility_approval', methods=['POST'])
+def facility_approval():
+    facility_request_id = request.json['facility_request_id']
+    print(facility_request_id)
+
+    result = db.session.execute(
+        db.select(FacilityRequest).where(FacilityRequest.facility_request_id == facility_request_id)).scalar_one()
+    return facility_request_schema.jsonify(result)
+
+
+@app.route('/post_facility_toggle', methods=['POST'])
+def facility_toggle():
+    approved = request.json['approved']
+    facility_request_id = request.json['facility_request_id']
+
+    facility_toggle_result = db.session.execute(
+        db.select(FacilityRequest).where(FacilityRequest.facility_request_id == facility_request_id)).scalar_one()
+
+    facility_toggle_result.approved = approved
+    db.session.add(facility_toggle_result)
+    db.session.commit()
+
+    return facility_request_schema.jsonify(facility_toggle_result)
+
+
+@app.route('/post_faculty_message', methods=['POST'])
+def faculty_message():
+    response = request.json['app_response']
+    app_id = request.json['app_id']
+    approved = request.json['approved']
+
+    appointment_id = db.session.execute(
+        db.select(AppointmentRequests).where(AppointmentRequests.app_id == app_id)).scalar_one()
+
+    appointment_id.app_response = response
+    appointment_id.approved = approved
+    db.session.add(appointment_id)
+    db.session.commit()
+
+    return appointment_request_schema.jsonify(appointment_id)
+
+
+@app.route('/post_access_toggle', methods=['POST'])
+def access_toggle():
+    approved = request.json['approved']
+    access_id = request.json['access_id']
+
+    access_toggle_result = db.session.execute(
+        db.select(AccessRequest).where(AccessRequest.access_id == access_id)).scalar_one()
+
+    access_toggle_result.approved = approved
+    db.session.add(access_toggle_result)
+    db.session.commit()
+
+    return appointment_request_schema.jsonify(access_toggle)
 
 
 @app.route('/post_facility', methods=['POST'])
